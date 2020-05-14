@@ -1,0 +1,82 @@
+;
+; CS1022 Introduction to Computing II 2018/2019
+; Lab 1 - Matrix Multiplication
+;
+
+N	EQU	4
+
+	AREA	globals, DATA, READWRITE
+
+; result matrix R
+
+ARR_R	SPACE	N*N*4		; 4 * 4 * word-size values
+
+
+	AREA	RESET, CODE, READONLY
+	ENTRY
+
+	LDR	R0, =ARR_A
+	LDR	R1, =ARR_B
+	LDR	R2, =ARR_R
+	LDR	R3, =N
+
+	; your program goes here
+	
+	LDR R4, =0			; ROW = 1 , i=0
+I	CMP R4, R3			; i < N
+	BGE ENDI
+	
+	LDR R5, =0			; COLUMN = 1, j = 0
+J	CMP R5, R3			; j < N
+	BGE ENDJ
+	
+	LDR R6, =0			; result = 0
+	
+	LDR R7, =0			; k = 0 (the column of A = row of B)
+K	CMP R7, R3			; k < N
+	BGE ENDK
+	
+	MUL R8, R4, R3			; indexA = row(I) * row_size
+	ADD R8, R8, R7			; index = index + col (K)
+	LDR R9, [R0, R8, LSL #2] 	; elemA = Memory.Word[ pArrA + (index*4) ] 				
+	
+	MUL R8, R7, R3			; indexB = row(K) * row_size
+	ADD R8, R8, R5			; index = index + col(J)
+	LDR R11, [R1, R8, LSL #2] 	; elemB = Memory.Word[ pArrB + (index*4) ] 
+	
+	MUL R12, R9, R11		; ( A[ i , k ] * B[ k , j ] )
+	ADD R6, R12, R6			; STORE IN R (r= R + r)
+	
+	ADD R7, R7, #1			
+	B   K
+	
+	; R[ i , j ] = r ;
+ENDK	MUL R8, R4, R3			; index = row(I) * row_size
+	ADD R8, R8, R5		        ; index = index + col (j)
+	STR R6, [R2, R8, LSL #2] 	; elemA = Memory.Word[ pArrR + (index*4) ] 				
+	
+	ADD R5, R5, #1			    ; add 1 to the column counter, j++
+	B	J
+	
+	ENDJ	ADD R4, R4, #1			; add 1 to the row counter, i ++
+	B	I
+	
+ENDI
+
+
+STOP	B	STOP
+
+; two constant value matrices, A and B
+
+ARR_A	DCD	 1,  2,  3,  4
+	DCD	 5,  6,  7,  8
+	DCD	 9, 10, 11, 12
+	DCD	13, 14, 15, 16
+
+ARR_B	DCD	 1,  2,  3,  4
+	DCD	 5,  6,  7,  8
+	DCD	 9, 10, 11, 12
+	DCD	13, 14, 15, 16
+
+	END
+

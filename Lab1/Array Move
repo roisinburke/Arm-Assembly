@@ -1,0 +1,33 @@
+
+; CS1022 Introduction to Computing II 2018/2019
+; Lab 1 - Array Move
+;
+
+N	EQU	16		; number of elements
+
+	AREA	globals, DATA, READWRITE
+
+; N word-size values
+
+ARRAY	SPACE	N*4		; N words
+
+
+	AREA	RESET, CODE, READONLY
+	ENTRY
+
+	; for convenience, let's initialise test array [0, 1, 2, ... , N-1]
+
+	LDR	R0,=0x40000000
+	LDR	R1,=5
+	MOV R5,#5
+	SUB	R6,R1,#1
+	CMP R5,R6
+	BGE L1
+	LDR	R7,[R0,R5,LSL#2]
+	LDR R8,[R0,R6,LSL#2]
+	
+L1
+
+STOP	B	STOP
+
+	END
