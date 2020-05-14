@@ -1,0 +1,637 @@
+;
+; CS1022 Introduction to Computing II 2018/2019
+; Mid-Term Assignment - Connect 4 - SOLUTION
+;
+; get, put and puts subroutines provided by jones@scss.tcd.ie
+;
+
+PINSEL0	EQU	0xE002C000
+U0RBR	EQU	0xE000C000
+U0THR	EQU	0xE000C000
+U0LCR	EQU	0xE000C00C
+U0LSR	EQU	0xE000C014
+
+
+	AREA	globals, DATA, READWRITE
+BOARD	DCB 0,0,0,0,0,0,0,0
+	DCB	0,0,0,0,0,0,0,0
+	DCB	0,0,0,0,0,0,0,0
+	DCB	0,0,0,0,0,0,0,0
+	DCB	0,0,0,0,0,0,0,0
+	DCB	0,0,0,0,0,0,0,0
+	DCB	0,0,0,0,0,0,0,0
+
+
+
+	AREA	RESET, CODE, READONLY
+	ENTRY
+
+	; initialise SP to top of RAM
+
+	LDR	R13, =0x40010000	; initialse SP
+
+	; initialise the console
+	BL	inithw
+
+	;
+	; your program goes here
+	; load in the board
+	;
+	LDR     R10, =BOARD		; pointing to board address in memory
+	LDR		R8,=0			; byte offset
+	LDR		R9, =0x31		; R9 = 1 in ASCII
+	BL		initbd			; initialise board
+	LDR		R0, =str_go		; register points to string
+	BL		puts			; branch to puts
+	MOV		R0, R10			; copy board address as parameter
+	BL		print			; print board
+	
+	; for computer player comment out this section of code for here ->
+;	
+;L8	LDR		R5, = 0x59		; R5 = current character
+;L7	LDR		R0, =str_next	; parameter point to string
+;	BL		puts			; branch to puts, print string
+;	MOV		R0, R5			; move character into parameter register
+;	BL		put				; print character
+;	BL		get				; get column
+;	MOV		R2,R0			; load R2 with returned column
+;	BL		put				; put column number on the screen
+;	BL		fullbd1			; branch to fullbd subroutine, check if board is full
+;	BL		placed			; branch to place the character
+;	BL		print			; print board
+;	CMP		R2,#1			; check if the  user entered incorrect column input
+;	BEQ		L7				; if (true) branch to retake go
+;	MOV		R0,R10			; copy address of board into R0
+;	BL		horiwin			; check for horizontal win
+;	BL		vertwin			; check for vertical win
+;	BL		diagwin			; cheack for diagonal win
+;	CMP		R5,#0x59		; is the current Player = Y?
+;	BNE		L8				; if (Player = R) change the player to Y
+;	LDR		R5, = 0x52		; else Player = R
+;	B		L7				; branch to next go at L7
+
+	; -> to here
+
+	; Computer generated player
+	; comment out code above
+	
+	MOV		R12,#0x30		; initialise R12
+L8	LDR		R5, =0x59		; R5 = current character
+L7	LDR		R0, =str_next	; parameter point to string
+	BL		puts			; branch to puts, print string
+	MOV		R0, R5			; move character into parameter register
+	CMP		R0, #0x52		; is the player the computer (R)
+	BNE		L0				; if not branch to L0
+	MOV		R0,R5			; copy the character into the parameter
+	BL		put				; print character
+								; code for horigo
+	;	BL		horigo			; branch to check for winning move horizontally
+	;	CMP		R2,#0			; see if a column was returned
+	;	BNE		L2				; if column was returned branch to print character in that column
+	MOV		R2,R12			; copy last move of coputer into R2
+	BL		comppl			; branch to computer player to add 1 to column
+	MOV		R12,R2			; copy back into R12
+	;L2	MOV		R5,0x52			; load R into parameter
+	BL		fullbd1			; branch to fullbd subroutine, check if board is full
+	BL		placed			; branch to place the character
+	BL		print			; print board
+	MOV		R0,R10			; board address into R0 parameter
+	BL		horiwin			; check for horizontal win
+	BL		vertwin			; check for vertical win
+	BL		diagwin			; cheack for diagonal win
+	B		L1
+L0	BL		put				; print character
+	BL		get				; get column
+	MOV		R2,R0			; load R2 with returned column
+	BL		put				; put column number on the screen
+	BL		fullbd1			; branch to fullbd subroutine, check if board is full
+	BL		placed			; branch to place the character
+	BL		print			; print board
+	CMP		R2,#1			; check if the  user entered incorrect column input
+	BEQ		L7				; if (true) branch to retake go
+	MOV		R0,R10			; copy address of board into R0
+	BL		horiwin			; check for horizontal win
+	BL		vertwin			; check for vertical win
+	BL		diagwin			; cheack for diagonal win
+	
+L1	CMP		R5,#0x59		; is the current Player = Y?
+	BNE		L8				; if (Player = R) change the player to Y
+	LDR		R5, =0x52		; else Player = R
+	B		L7				; branch to next go at L7
+	
+
+stop	B	stop
+
+;
+; your subroutines go here
+;
+
+;
+; inithw subroutines
+; performs hardware initialisation, including console
+; parameters:
+;	none
+; return value:
+;	none
+;
+inithw
+	LDR	R0, =PINSEL0		; enable UART0 TxD and RxD signals
+	MOV	R1, #0x50
+	STRB	R1, [R0]
+	LDR	R0, =U0LCR		; 7 data bits + parity
+	LDR	R1, =0x02
+	STRB	R1, [R0]
+	BX	LR
+
+;
+; get subroutine
+; returns the ASCII code of the next character read on the console
+; parameters:
+;	none
+; return value:
+;	R0 - ASCII code of the character read on teh console (byte)
+;
+get	LDR	R1, =U0LSR		; R1 -> U0LSR (Line Status Register)
+get0	LDR	R0, [R1]		; wait until
+	ANDS	R0, #0x01		; receiver data
+	BEQ	get0			; ready
+	LDR	R1, =U0RBR		; R1 -> U0RBR (Receiver Buffer Register)
+	LDRB	R0, [R1]		; get received data
+	BX	LR			; return
+
+;
+; put subroutine
+; writes a character to the console
+; parameters:
+;	R0 - ASCII code of the character to write
+; return value:
+;	none
+;
+put	LDR	R1, =U0LSR				; R1 -> U0LSR (Line Status Register)
+	LDRB	R1, [R1]			; wait until transmit
+	ANDS	R1, R1, #0x20		; holding register
+	BEQ	put						; empty
+	LDR	R1, =U0THR				; R1 -> U0THR
+	STRB	R0, [R1]			; output charcter
+put0	LDR	R1, =U0LSR			; R1 -> U0LSR
+	LDRB	R1, [R1]			; wait until
+	ANDS	R1, R1, #0x40		; transmitter
+	BEQ	put0					; empty (data flushed)
+	BX	LR						; return
+
+;
+; puts subroutine
+; writes the sequence of characters in a NULL-terminated string to the console
+; parameters:
+;	R0 - address of NULL-terminated ASCII string
+; return value:
+;	R0 - ASCII code of the character read on teh console (byte)
+;
+puts	STMFD	SP!, {R4, LR} 		; push R4 and LR
+	MOV	R4, R0			; copy R0
+puts0	LDRB	R0, [R4], #1		; get character + increment R4
+	CMP	R0, #0			; 0?
+	BEQ	puts1			; return
+	BL	put			; put character
+	B	puts0			; next character
+puts1	LDMFD	SP!, {R4, PC} 		; pop R4 and PC
+
+;
+; print subroutine
+; prints the connect 4 board to the console
+; parameters:
+;	R0 = the address of the board in memory
+; return value:
+;	none
+;
+print 	PUSH	{lr}			; push link register onto stack
+		MOV		R10,R0			; address of board copied into R10
+		MOV		R0,#0x0A		; return ch stored in R0
+		BL		put				; branch to put to print single character
+		LDR		R8,=0			; load with 0
+print0	CMP		R8,#24			; Offset of last positions address in memory
+		BHI		print1			; if higher -> end of subroutine
+		LDR		R0,[R10,R8]		; load character from memory into R0
+		ADD		R8,R8,#4		; add to offset
+		BL		put				; branch to put
+		B		print0			; back to start of subroutine
+print1	LDR		R0,=0x0A		; return character
+		BL		put				; print ch by branching to put subroutine
+		B		print4			; branch to print4 
+print3	CMP		R8,#56			; compare offset to 56
+		BEQ		print1			; if (equal) - branch to return ch
+		CMP		R8,#84			; compare offset to 84
+		BEQ		print1			; if (equal) - branch to return ch
+		CMP		R8,#112			; compare offset to 112
+		BEQ		print1			; if (equal) - branch to return ch
+		CMP		R8,#140			; compare offset to 140
+		BEQ		print1			; if (equal) - branch to return ch
+		CMP		R8,#168			; compare offset to 168
+		BEQ		print1			; if (equal) - branch to return ch
+		CMP		R8,#196			; compare offset to 196
+		BEQ		print2			; if (equal) - end subroutine
+print4	LDR		R0,[R10,R8]		; load character from memory into R0
+		ADD		R8,R8,#4		; add to offset
+		BL		put				; branch to put, to print
+		B		print3			; branch back to print3 to check if new line needs to be started
+print2	POP	{pc}
+
+;
+; initbd subroutine (initialise board) 
+; initialises the board to a line of numbers at the top, corresponding to the columns
+; the rest of the spaces are zeros
+; parameters: 
+;	R8 - byte offset
+;	R9 - ASCII character
+; return:
+;	nothing
+;
+
+initbd	PUSH	{R4-R12,lr}		; push on all registers and link register to stack
+initbd0	CMP		R9, #0x37		; compare with 7
+		BHI		initbd1			; if higher than branch to initbd1
+		STR		R9,[R10,R8]		; store in memory
+		ADD		R8,R8,#4		; add to the offset
+		ADD		R9,R9,#0x01		; move to next number in ASCII
+		B		initbd0			; branch back to initbd0
+initbd1	CMP		R8,#192			; offset of the last place on the board
+		BHI		initbd2			; if higher -> board initialised
+		LDR		R9,=0x30		; R9 = 0 in ASCII
+		STR		R9,[R10,R8]		; store in memory
+		ADD		R8,R8,#4		; add to offset
+		B		initbd1			; branch to initbd1
+initbd2		POP {R4-R12,pc}		; pop all registers off stack to pc
+
+;
+; placed subroutine 
+; places the character (Y or R) into the board in the given column
+; parameters:
+;	R2 - the column that the player entered
+;	R5 - the current player (Y or R)
+; return: 
+;	boolean in R2 if error with input
+;
+placed  PUSH {R4-R12,lr}		; push on all registers and link register
+		CMP		R2,#0x31		; compare column entered with ASCII code 1
+		BEQ		placed1			; if (equal) -> branch to plave in that column
+		CMP		R2,#0x32		; compare column entered with ASCII code 2
+		BEQ		placed2			; if (equal) -> branch to plave in that column
+		CMP		R2,#0x33		; compare column entered with ASCII code 3
+		BEQ		placed3			; if (equal) -> branch to plave in that column
+		CMP		R2,#0x34		; compare column entered with ASCII code 4
+		BEQ		placed4			; if (equal) -> branch to plave in that column
+		CMP		R2,#0x35		; compare column entered with ASCII code 5
+		BEQ		placed5			; if (equal) -> branch to plave in that column	
+		CMP		R2,#0x36		; compare column entered with ASCII code 6
+		BEQ		placed6			; if (equal) -> branch to plave in that column
+		CMP		R2,#0x37		; compare column entered with ASCII code 7
+		BEQ		placed7			; if (equal) -> branch to plave in that column
+		LDR		R0, =str_err	; load parameter with error string, user entered something other than 1-7
+		BL		puts			; branch to puts, print string
+		MOV		R2,#1			; boolean for incorrect input == true
+		B		placed0			; branch back to get ch
+		MOV		R0,R10			; address of board
+placed1	MOV		R4,#168			; first space in first column byte offset
+		MOV		R6, #0			; last space in first column byte offset
+		B		placed8			; branch to test if position is free
+placed2	MOV		R4,#172			; first space in second column byte offset
+		MOV		R6, #4			; last space in second column byte offset
+		B		placed8			; branch to test if position is free
+placed3	MOV		R4,#176			; first space in third column byte offset
+		MOV		R6, #8			; last space in third column byte offset
+		B		placed8			; branch to test if position is free
+placed4	MOV		R4,#180			; first space in fourth column byte offset
+		MOV		R6, #12			; last space in fourth column byte offset
+		B		placed8			; branch to test if position is free
+placed5	MOV		R4,#184			; first space in fifth column byte offset
+		MOV		R6, #16			; last space in fifth column byte offset
+		B		placed8			; branch to test if position is free
+placed6	MOV		R4,#188			; first space in sixth column byte offset
+		MOV		R6, #20			; last space in sixth column byte offset
+		B		placed8			; branch to test if position is free
+placed7	MOV		R4,#192			; first space in seventh column byte offset
+		MOV		R6, #24			; last space in seventh column byte offset
+		B		placed8			; branch to test if position is free
+placed8	LDR		R3,[R10,R4]		; load from memory at byte offset into R3
+		CMP		R3,#0x30		; compare with 0x00
+		BEQ		placed9			; if (equal) place character
+		CMP		R4,R6			; check if the column is full, reach the last byte offset
+		BLS		placed10		; if (full) branch to print out full message to console
+		SUB		R4,R4,#28		; move to the position above in the column, sub 28 from offset
+		B		placed8			; branch back to test next offset 
+placed9	STR		R5,[R10,R4]		; store character in memory address
+		B		placed0			; branch to pop out of subroutine
+placed10 LDR	R0,=str_full	; load string into parameter
+		BL		puts			; branch to puts, print string to console
+		MOV		R2,#1			; boolean to check if the user picked a full column
+		B		placed0			; branch to end subroutine
+placed0
+		MOV	R0,R10				; move address of board into R0
+		POP	{R4-R12,pc}			; pop registers and pc
+		
+;
+; fullbd subroutine 
+; checks if the board is full and if so prints out game over
+; 	parameters:
+;	return:
+;
+
+	
+fullbd1	PUSH {R10,lr}			; push on address of the board
+	MOV	R0,R10					; copy into R0
+	MOV	R11,#28					; load R11 with 28
+fullbd2	LDR	R4,[R10,R11]		; load first position on board into R4
+	CMP	R11, #192				; last postion on the board - byte offset
+	BGE	fullbd3					; if equal or greater - board is full - branch to print string
+	CMP	R4,#0x30				; compare with ASCII code 0 
+	BEQ	fullbd0					; if (equal) board is not full
+	ADD	R11,R11,#4				; add 4 to offset
+	B	fullbd2					; branch back up to test next offset
+fullbd3  LDR R0, =str_fullbd	; load string into parameter
+	BL	puts					; print string
+	B	fullbd6					; branch to end
+fullbd0	POP {R10,pc}			; pop R10 and pc
+fullbd6 POP {R10,lr}			; pop R10 and link register
+		B	stop				; branch to stop
+
+;
+; horiwin subroutine
+; this subroutine checks to see if there is a horizontal win
+; parameters:
+;	R5 - the character that represents the player
+;	R0 - address of the board
+; return: 
+;	nothing
+;
+horiwin 	PUSH {R5,lr}	; push on character and link register
+			LDR	R6,=192		; byte offset of the last address in memory
+horiwin0 	LDR	R4,=0		; the counter = 0 / reset to 0
+			CMP	R6,#28		; compare offset with 28
+			BGT horiwin2	; if greater than or equal branch to test offset
+			POP	{R5,pc}		; if less than end subroutine
+			CMP	R6,#164		; compare offset with 164
+			BEQ	horiwin3	; reset counter
+			CMP	R6,#136		; compare offset with 136
+			BEQ	horiwin3	; reset counter
+			CMP	R6,#108		; compare offset with 108
+			BEQ	horiwin3	; reset counter
+			CMP	R6,#80		; compare offset with 80
+			BEQ	horiwin3	; reset counter
+			CMP	R6,#52		; compare offset with 52
+			BEQ	horiwin3	; reset counter
+			CMP	R6,#24		; compare offset with 24
+			BEQ	horiwin4	; end subroutine
+			
+			
+horiwin2 	CMP	R4,#4		; compare counter to 4
+			BGE	horiwin1	; if equal or greater -> winner
+			LDR	R3,[R0,R6]	; load value from memory into address
+			SUB R6,R6,#4	; subtract from offset
+			CMP	R3,R5		; compare with the current character
+			BNE	horiwin0	; if not equal branch to reset counter
+			ADD	R4,R4,#1	; count++
+			B	horiwin2	; branch to test next offset
+horiwin1 	LDR	R0,=str_win	; load parameter with string for win
+			BL	puts		; branch to puts, print string
+			MOV	R0,R5		; move ch into R5
+			BL	put			; branch to put, print to console
+			POP	{R5,lr}		; pop R5 and lr
+			B	stop		; branch to stop
+
+horiwin3	MOV	R4,#0		; reset counter
+			B	horiwin2	; branch to compare counter
+horiwin4	POP	{R5,pc}		; leave subroutine
+
+;
+; vertical win subroutine
+; checks to see if there has been a vertical winner 
+; parameters:	
+;	R5 - Player piece
+;	R0 - address of board
+; return:
+;	nothing
+;
+vertwin		PUSH {R5,lr}
+			LDR	R6,=192		; byte offset of the last address in memory
+			MOV	R7,R6		; make a copy of the byte offset of the last spot
+vertwin0	LDR	R4,=0		; the counter = 0
+vertwin1	CMP	R4,#4		; compare counter to 4
+			BGE	vertwin3	; if (equal) - branch to move to next column
+			CMP	R6, #24		; compare offset with 24
+			BEQ	vertwin2	; if (equal) - branch to move to next column
+			CMP	R6, #20		; compare offset with 20
+			BEQ	vertwin2	; if (equal) - branch to move to next column
+			CMP	R6, #16		; compare offset with 16
+			BEQ	vertwin2	; if (equal) - branch to move to next column
+			CMP	R6, #12		; compare offset with 12
+			BEQ	vertwin2	; if (equal) - branch to move to next column
+			CMP	R6, #8		; compare offset with 8
+			BEQ	vertwin2	; if (equal) - branch to move to next column
+			CMP	R6, #4		; compare offset with 4
+			BEQ	vertwin2	; if (equal) - branch to move to next column
+			CMP	R6, #0		; compare offset with 0
+			BEQ	vertwin4	; branch to end sub
+;			
+vertwin5	LDR	R3,[R0,R6]	; load the player from memory into register
+			SUB	R6,R6,#28	; move to place above on the board in the memory
+			CMP	R5,R3		; is the place = the current player piece
+			BNE	vertwin0	; if the current player piece is not there then counter is reset to 0
+			ADD	R4,R4,#1	; counter++
+			B	vertwin1	; branch to test next space
+			
+vertwin2	MOV	R6,R7		; copy byte offset into R6 to move to the bottom row of board
+			SUB	R6,R6,#4	; move to the byte offset to the next column (column to the left)
+			MOV	R7,R6		; copy into R7
+			MOV	R4,#0		; reset counter to 0
+			BL	vertwin5	; branch to check next offset in memory
+vertwin4	POP	{R5,pc}		; end subroutine, pop R5 and pc
+vertwin3	LDR	R0,=str_win	; load string for winner
+			BL	puts		; branch to puts, print string
+			MOV	R0,R5		; load parameter with character
+			BL	put			; branch to put
+			POP	{R5,lr}		; pop R5 and lr
+			B	stop		; branch to stop
+
+;
+; diagwin subroutine
+; checks for a win diagonally
+; parameters:
+;	R5 - current player character
+;	R0 - address of board in memory
+; return:
+;	none
+;
+diagwin		PUSH {R5,lr}	; push on R5 and lr
+			LDR	R6,=180		; byte offset of the last address in memory
+			MOV	R7,R6		; make a copy of the byte offset of the last spot
+diagwin0	LDR	R4,=0		; the counter = 0
+diagwin1	CMP	R4,#4		; compare counter with 4
+			BGE	diagwin3	; if equal then the player has won, branch to diagwin3
+			CMP	R6,#84		; is byte offset == 84?
+			BEQ	diagwin4	; if (true) branch
+			CMP	R6,#56		; is byte offset == 56?
+			BEQ	diagwin4	; if (true) branch
+			CMP	R6,#28		; is byte offset == 28?
+			BEQ	diagwin4	; if (true) branch
+			CMP	R6,#24		; is byte offset == 24?
+			BEQ	diagwin4	; if (true) branch
+			CMP	R6,#20		; is byte offset == 20?
+			BEQ	diagwin4	; if (true) branch
+			CMP	R6,#16		; is byte offset == 16?
+			BEQ	diagwin4	; if (true) branch
+			CMP	R6,#12		; is R6==12?
+			BEQ	diagwin7	; if the offset is equal to 12 
+							; then check the columns right to left
+			
+			
+diagwin6	LDR	R3,[R0,R6]	; load the player from memory into register
+			SUB	R6,R6,#24	; move to place above on the board in the memory
+			CMP	R5,R3		; is the place = the current player piece
+			BNE	diagwin0	; if the current player piece is not there then counter is reset to 0
+			ADD	R4,R4,#1	; counter++
+			B	diagwin1	; branch to test next space
+			
+diagwin4	MOV	R6,R7		; copy byte offset into R6
+			SUB	R6,R6,#4	; subtract from offset
+			MOV	R7,R6		; copy offset into R7
+			MOV	R4,#0		; reset counter
+			B	diagwin6	; branch to diagwin6 to test next address
+		
+diagwin3 	LDR	R0,=str_win	; load string into parameter register
+			BL	puts		; print by branching puts
+			MOV	R0,R5		; move current player ch into parameter
+			BL	put			; branch put
+			POP	{R5,lr}		; pop R5 and link register
+			B	stop		; end program
+diagwin5	POP {R5,pc}		; pop R5 and pc
+;;;
+diagwin7	LDR	R6,=180		; byte offset of the last address in memory
+			MOV	R7,R6		; make a copy of the byte offset of the last spot
+diagwin8	LDR	R4,=0		; the counter = 0
+diagwin10	CMP	R4,#4		; is counter == 4?
+			BGE	diagwin3	; if (true) branch
+			CMP	R6,#52		; is byte offset == 52?
+			BEQ	diagwin11	; if (true) branch
+			CMP	R6,#24		; is byte offset == 24?
+			BEQ	diagwin11	; if (true) branch
+			CMP	R6,#-4		; is byte offset == -4?
+			BEQ	diagwin11	; if (true) branch
+			CMP	R6,#0		; is byte offset == 0?
+			BEQ	diagwin11	; if (true) branch
+			CMP	R6,#4		; is byte offset == 4?
+			BEQ	diagwin11	; if (true) branch
+			CMP	R6,#8		; is byte offset == 8?
+			BEQ	diagwin11	; if (true) branch
+			CMP	R6,#12		; is byte offset == 12?
+			BEQ	diagwin5	; if equal branch back out of subroutine
+			
+diagwin9	LDR	R3,[R0,R6]	; load the player from memory into register
+			SUB	R6,R6,#32	; move to place above on the board in the memory
+			CMP	R5,R3		; is the place = the current player piece
+			BNE	diagwin8	; if the current player piece is not there then counter is reset to 0
+			ADD	R4,R4,#1	; counter++
+			B	diagwin10	; branch to test next space
+			
+diagwin11	MOV	R6,R7		; copy byte offset in R6
+			ADD	R6,R6,#4	; add to offset
+			MOV	R7,R6		; copy offset into R7
+			MOV	R4,#0		; reset counter
+			B	diagwin9	; branch to compare the value at the memory address of this new offset
+			
+;
+; comppl subroutine
+; this is the computer generated player 
+; parameter:
+;	R2 - last column
+; return:
+;	R2 - new column
+
+comppl	PUSH {lr}			; push link register
+		ADD	R2,R2,#0x01		; add to previous go, to move to next column
+		CMP	R2,#0x37		; compare with 7
+		BLE	comppl0			; if less than or equal branch to pop
+		MOV	R2,#0x31		; else reset column to 1
+comppl0	POP	{pc}			; pop to pc
+
+;
+; horigo subroutine
+; checks for horizontal winning postion to take
+; parameters: 
+;	R10 - address of board
+; return:
+;	R2 - column to win or zero if no winning column is detected
+;
+horigo	PUSH {R10,lr}		; push memory address of board and link register
+		LDR	R5, =192		; byte offset of the last address
+		LDR	R7,=8			; load R7 with 8, this keeps track of the column number
+horigo3	LDR	R4, =0			; reset counter to 0
+		SUB	R7,R7,#1		; subtract 1 from column number
+horigo2	CMP	R4,#3			; compare counter with 3
+		BEQ horigo4			; if equal branch to test if following postion is free
+		CMP	R5,#168			; compare byte offset with 168
+		BEQ	horigo6			; if (equal) -> move to next row
+		CMP	R5,#140			; compare byte offset with 140
+		BEQ	horigo6			; if (equal) -> move to next row
+		CMP	R5,#112			; compare byte offset with 112
+		BEQ	horigo6			; if (equal) -> move to next row
+		CMP	R5,#84			; compare byte offset with 84
+		BEQ	horigo6			; if (equal) -> move to next row
+		CMP	R5,#56			; compare byte offset with 56
+		BEQ	horigo6			; if (equal) -> move to next row
+		CMP	R5,#28			; compare byte offset with 28
+		BEQ	horigo5			; if (equal) -> no winning move
+		
+		LDR	R6, [R10,R5]	; load from memory into R6
+		SUB	R5,R5,#4		; subtract from offset
+		CMP	R6, #0x52		; compare with r
+		BNE	horigo3			; if not equal -> branch to reset the counter
+		ADD R4,R4,#1		; else -> add to counter
+		B	horigo2			; branch to test next offset
+		
+horigo4	LDR	R6, [R10,R5]	; load character from memory address at offset R5 into R6
+		CMP	R6,#0x30		; compare with zero
+		BEQ	horigo7			; if (equal) -> load this column into R2 to be returned
+		MOV	R4,#0			; else -> reset counter, not a winning move
+		SUB	R5,R5,#4		; subtract from offset
+		B	horigo2			; branch to test 
+		
+		
+horigo1	POP {R10,pc}		; pop R10 and pc back to main
+horigo5	MOV	R2,#0			; R2 = 0, no winning column detected
+		B	horigo1			; branch to return to main
+horigo6 SUB	R5,R5,#4		; subtract from offset
+		LDR	R7,=8			; load column count with 8, this is because it has moved up a column
+		B	horigo3			; reset counter
+horigo7 MOV	R2,R7			; load R2 with the winning column
+		B	horigo1			; branch to pop from subroutine
+;
+; horicp subroutine
+; this checks for a line of three of the of the computer 
+;
+		
+;
+; hint! put the strings used by your program here ...
+;
+str_next
+	DCB	0x0A,"Enter the column to go, player:",0
+	
+str_err
+	DCB	0x0A,"Enter a number 1-7 only",0x0A,0
+	
+str_full
+	DCB 0x0A,"This column is full, pick another",0x0A,0
+
+str_fullbd
+	DCB 0x0A,"The board is full, GAME OVER",0x0A,0
+	
+str_go
+	DCB	"Let's play Connect4!!",0xA, 0xD, 0
+
+str_newl
+	DCB	0xA, 0xD, 0x0
+	
+str_win
+	DCB	0x0A,"The winner is:",0
+
+str_
+	END
