@@ -1,0 +1,222 @@
+;
+; CS1022 Introduction to Computing II 2018/2019
+; Lab 3 - Floating-Point Addition
+;
+
+	AREA	RESET, CODE, READONLY
+	ENTRY
+
+;
+; Test Data
+;
+
+FP_A	EQU	0x41C40000
+FP_B	EQU	0x41960000
+
+
+	; initialize system stack pointer (SP)
+
+	LDR	SP, =0x40010000
+
+	LDR	r0, =FP_A		; test value A
+	LDR	r1, =FP_B		; test value B
+	
+	;LDR	R0,=0x00C40000 		; normalised fraction			-> EQU	0x41C40000
+	;LDR R0, =0x01880000		; not normalised fraction		-> EQU	0x41C40000
+	;LDR R0,=0x00620000		; not normalised fraction		-> EQU	0x41C40000
+	
+	;LDR	R0,=0x00440000
+	;LDR	R0,=0x80440000
+
+	;LDR	R1,=0x00000004		; exponent
+	;LDR	R1,=0x80000004		; negative exponent
+	;BL	fpencode
+	
+	;LDR	r0, =0x41740000		; (i)	1.11101 x 2^3
+	;LDR r0, =0x41F40000		; (ii)	1.111010 x 2^4
+	;LDR r0, =0x410E0000		; (iii)	1.00011100 x 2^3
+	
+	;LDR	r0, =FP_A		; test value A
+	;LDR	r0, =0x42440000
+
+	;BL	fpdecode
+	BL  fpadd
+	
+	
+stop	B	stop
+
+;
+; fpdecode
+; decodes an IEEE 754 floating point value to the signed (2's complement)
+; fraction and a signed 2's complement (unbiased) exponent
+; parameters:
+;	r0 - ieee 754 float
+; return:
+;	r0 - fraction (signed 2's complement word)
+;	r1 - exponent (signed 2's complement word)
+;
+fpdecode	PUSH {lr}				; push link register to stack
+			MOV	 R1,R0				; copy parameter into R1
+			MOV	 R2,R0				; copy parameter into R2
+			LDR	 R4, =0x807FFFFF	; load with mask for exponent 
+			BIC	 R1,R1,R4			; clear everything except exponent
+			
+			;LDR  R8,=0x40000000		; compare with negative exponent
+			;BGE  
+			
+			LDR	 R4, =0x3F800000	; load with bias (127)
+			CMP  R4, R1				; compare exponent with bias
+			BGT  fpdecode1			; if bias is bigger,  the exponent is negative
+			SUB	 R1,R1,R4			; subtract bias from exponent 
+fpdecode2	LDR	 R4, =0xFF800000	; load mask for fraction
+			BIC	 R0,R0,R4			; clear everything except fraction
+		;   MOV	 R0,R0,LSL #1		; shift to get value that is actually in the fraction
+			LDR	 R4, =0x7FFFFFFF	; mask for sign 
+			BIC	 R2,R2,R4			; clear all bits except the sign
+			MOV	 R1,R1,LSR #23 		; shift the exponent to the right
+			CMP  R7,#1				; boolean for negative exponent == true ?
+			BEQ  fpdecode3			; if (true) branch  
+			ORR  R0,R0,R2			; make signed 
+			POP	 {pc}				; pop pc
+			
+fpdecode1   SUB	 R1,R1,R4			; subtract bias from exponent 
+			MVN  R1,R1				; invert bits
+			ADD  R1,R1,#1			; add 1
+			LDR	 R7, =1				; boolean for negative exponent set to true
+			B    fpdecode2			; branch to main
+fpdecode3	LDR	 R7, =0x80000000	; mask for sign of exponent
+			ORR  R1,r1,r7			; make exponent negative
+			
+	;
+	; your decode subroutine goes here
+	;
+
+;
+; fpencode
+; encodes an IEEE 754 value using a specified fraction and exponent
+; parameters:
+;	r0 - fraction (signed 2's complement word)
+;	r1 - exponent (signed 2's complement word)
+; result:
+;	r0 - ieee 754 float
+;
+fpencode    PUSH {lr}						; push link register
+			LDR  R6, =0x00000000			; load with zero
+			MOV	 R1,R1,LSL #23				; shift to the left, exponent place
+			ADD	 R1,R1,#0x3F800000			; add exponent and bias
+			CMP	 R0,#0x00000000				; if less than zero
+			BLT  fpencode1					; if less than branch
+;			CMP	 R0,#0x01000000				; compare with value bigger than normalised
+;			BGE  fpencode4					; if greater than or equal branch
+;			CMP  R0,#0x00800000				; compare with the smallest normalised value
+;			BLT	 fpencode6					; if less than branch
+fpencode5	LDR  R5,=0x00800000				; mask for fraction 
+			BIC  R0,R0,R5					; clear the number infront of the decimal point
+			ORR	 R0,R1,R0					; else combine fraction and exponent
+fpencode3	POP	 {pc}						; pop
+			
+fpencode1	LDR  R4,=0x80000000				; load the sign into 4
+			AND  R4,R0,R4					; clear all bits except sign
+			ORR	 R0,R1,R0					; combine fraction and exponent
+			ORR  R0,R0,R4					; combine with sign
+			B	 fpencode3					; branch to pop
+fpencode4   MOV	 R0,R0, LSR#1				; right shift by 1
+			CMP	 R0,#0x01000000				; compare with the value bigger than the largest normalised value
+			SUB	 R6,R6,#0x00000001			; subtract from the normalised exponent
+		;	BLT  fpencode5					; if normalised branch 
+
+			BLT  fpencode7  				; if normalised branch
+			B    fpencode4					; else loop back to fpencode4
+
+fpencode6	MOV	 R0,R0, LSL#1				; left shift by 1
+			CMP  R0, #0x00800000			; compare with the smallest normalised value
+			ADD	 R6,R6,#0x00000001			; add 1 to the normalised exponent
+		;	BGE  fpencode5					; if normalised branch 
+
+			BGE  fpencode8					; if normalised branch 
+			B    fpencode6					; else loop back to fpencode6
+			
+			
+fpencode7	MVN  R6,R6						; invert bits
+			ADD  R6,R6,#1					; add 1
+			MOV	 R6,R6,LSL #23				; shift to align with the exponent
+			SUB	 R1,R1,R6					; take away from exponent
+			B	 fpencode5					; branch to combine
+			
+fpencode8	MOV	 R6,R6,LSL #23				; shift to align with the exponent
+			ADD  R1,R1,R6					; add the normalised exponent to the original exponent
+			B	 fpencode5					; branch to combine
+
+
+
+;
+; fpadd
+; adds two IEEE 754 values
+; parameters:
+;	r0 - ieee 754 float A
+;	r1 - ieee 754 float B
+; return:
+;	r0 - ieee 754 float A+B
+;
+fpadd
+	PUSH {R4-R12, LR}
+	MOV	R4, R0					; load A
+	MOV	R5, R1					; load B 
+	
+	MOV	R0, R4					; put A in R0 to decode it 
+	BL 	fpdecode
+	MOV	R6, R0					; fraction A
+	MOV	R7, R1					; exponent A
+	
+	MOV	R0, R5					; put B in R0 to decode it
+	BL 	fpdecode
+	MOV	R8, R0					; fraction B
+	MOV	R9, R1					; exponent B
+	
+	CMP	R9, R7					; compare exponent B and A  
+	BGT higher					; if B is greater that one
+	BLT	lower
+	
+add3	ADD R0, R8, R6			; add fractions
+add7	MOV	R1, R7				; move exponent to R1 to encode 
+	    BL	fpencode
+	    POP 	{R4-R12, PC}
+
+	
+lower 	LDR	R12, =0x80000000	 
+	    CMP	R8, R12				; check if exponent is signed or not 
+	    BHS	addlows				; if signed 
+addlow2	CMP	R9, R7				; compare exponents 
+	    BGE	add3			
+	    ADD	R9, R9, #1			; add 1 to the fraction
+	    MOV R8, R8, LSR #1		; shift fraction to the right by 1 
+	    B 	addlow2				; repeat until exponents are equal 
+	
+addlows LDR	R10, =0xFFFFFFFF	; offset to make it postive 
+	    EOR	R8, R8, R10		    ; invert bits 
+	    ADD	R8, R8, #1		    ; add #1 
+	
+addlow3 CMP	R9, R7
+	    BGE	add3bis
+	    ADD R9, R9, #1
+	    MOV	R8, R8, LSR #1
+	    B	addlow3
+	
+add3bis
+		EOR	R8, R8, R10
+		ADD	R8, R8, #1
+		B	add3
+	
+	
+higher 	MOV 	R10, R7		; exponent A in temp
+	MOV 	R11, R6			; exponent B in temp
+	MOV 	R7, R9			; change exponets 
+	MOV 	R6, R8		    ; change fractions
+	MOV 	R9, R10
+	MOV 	R8, R11
+	B	lower
+	
+	B 	higher			; repeat		
+
+	
+	END

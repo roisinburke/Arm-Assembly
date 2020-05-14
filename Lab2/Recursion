@@ -1,0 +1,103 @@
+;
+; CS1022 Introduction to Computing II 2018/2019
+; Lab 2 - Recursion
+;
+
+N	EQU	10
+
+	AREA	globals, DATA, READWRITE
+
+; N word-size values
+
+SORTED	SPACE	N*4		; N words (4 bytes each)
+
+
+	AREA	RESET, CODE, READONLY
+	ENTRY
+
+	;
+	; copy the test data into RAM
+	;
+
+	LDR	R4, =SORTED
+	LDR	R5, =UNSORT
+	LDR	R6, =0
+whInit	CMP	R6, #N
+	BHS	eWhInit
+	LDR	R7, [R5, R6, LSL #2]
+	STR	R7, [R4, R6, LSL #2]
+	ADD	R6, R6, #1
+	B	whInit
+eWhInit
+
+
+	;
+	; call your sort subroutine to test it
+	;
+;SWAP	
+;	LDR	R0,=0x40000000
+;	LDR	R1,=4
+;	LDR	R2,=6
+;	BL	SWAP
+;SORT
+	LDR	R0,=0x40000000
+	BL 	SORT
+
+STOP	B	STOP
+
+
+	;
+	; your swap subroutine goes here
+	;
+SWAP		PUSH {R4-R12,lr}	;
+			MOV	R3,#4			;
+			STR	R1,[R0,R9]		; swap values
+			STR R2,[R0,R8]
+;			MUL	R4,R1,R3		;
+;			MUL	R5,R2,R3		;
+;			LDR R6,[R0,R4]		;
+;			LDR	R7,[R0,R5]		;
+;			STR R6,[R0,R5]		;
+;			STR R7,[R0,R4]		;
+			POP	{R4-R12,pc}		;
+			
+
+	;
+	; your sort subroutine goes here
+	;
+	; R10 is the boolean swapped
+	; R6 = i
+	
+SORT		PUSH{R4-R12,lr}
+			LDR	R10,=0		; swapped = false
+			LDR	R6,=1		; R6 = i 
+SORT2		CMP	R6,#N		; i<N ??
+			BHS	SORT1		; branch to while (swapped)
+			SUB	R7,R6,#1	; R7 = i-1
+							
+							; getting the i and i-1 values
+			LDR	R4,=4		; 4 bytes in a word
+			MUL	R8,R4,R6	; byte offset for i
+			MUL	R9,R4,R7	; byte offset for i-1
+			LDR	R1,[R0,R8]	; R1-> i
+			LDR	R2,[R0,R9]	; R2-> i-1
+		
+			CMP	R2,R1		; is i-1 > 1 ??
+			BLS	SORT0		; if not branch to i++
+;			STR	R1,[R0,R9]	; swap values
+;			STR R2,[R0,R8]	; 
+			BL	SWAP
+			LDR	R10,=1		; swapped = true
+			
+SORT0		ADD	R6,R6,#1	; i++
+			B	SORT2		; back to the start of the for loop
+			
+SORT1		CMP	R10,#0		; is swapped = false ??
+			BNE	SORT		; branch to start
+			POP	{R4-R12,pc}
+			B	STOP		; STOP
+		
+
+UNSORT	DCD	9,3,0,1,6,2,4,7,8,5
+
+	END

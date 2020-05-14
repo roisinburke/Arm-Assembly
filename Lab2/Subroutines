@@ -1,0 +1,234 @@
+;
+; CS1022 Introduction to Computing II 2018/2019
+; Lab 2 - Subroutines
+;
+
+N	EQU	4
+BUFLEN	EQU	32
+
+PINSEL0	EQU	0xE002C000
+U0RBR	EQU	0xE000C000
+U0THR	EQU	0xE000C000
+U0LCR	EQU	0xE000C00C
+U0LSR	EQU	0xE000C014
+
+
+	AREA	globals, DATA, READWRITE
+
+; char buffer
+BUFFER	SPACE	BUFLEN		; BUFLEN bytes
+
+; result array
+ARR_R	SPACE	N*4		; N words (4 bytes each)
+
+
+	AREA	RESET, CODE, READONLY
+	ENTRY
+
+va	BL	inithw
+
+	;
+	; invoke your max subroutine to test it
+	;
+;		LDR R4, = 2
+;		LDR	R5, = 9
+;		MOV	R0,R4
+;		MOV	R1,R5
+;		BL	MAX
+	;
+	; invoke your gets subroutine to test it
+	;
+		LDR	R4, =6
+		LDR R5, =0
+		LDR	R6, =0x40000000
+		BL	gets
+		
+	;
+	; invoke your matmul subroutine to test it
+	;
+	LDR    R0, =0x40000000    
+    LDR    R1, =0x100
+    BL    ZEROMEMORY
+    LDR    R4, =ARR_A   	
+    LDR    R5, =ARR_B   		 
+    LDR    R6, =ARR_R   		 
+    LDR    R7, =2   			 ; matrix a rows 
+    LDR    R8, =3   			 ; matrix a columns 
+    LDR    R9, =3   			 ; matrix b rows 
+    LDR    R10,=4   			 ; matrix b columns 
+    CMP    R8, R9   			 ; can we multiply 
+    BNE    STOP   			     ; if not, stop
+    LDR    R11, =0x40000000      ; stores row-b and column-a
+    STR    R7, [R11], #4   	     ; row a
+    STR    R8, [R11], #4   	     ; column a
+    STR    R10,[R11], #-8   	 ; column b
+    
+    MOV    R0, R4   			 ; array a
+    MOV    R1, R5   			 ; array b
+    MOV    R2, R6   			 ; array r
+    MOV    R3, R11   			 ; number of rows and columns address in memory
+    BL    MATMUL     			 ; call sub
+
+
+
+STOP	B	STOP
+
+
+;
+; your max subroutine goes here
+;
+;MAX		PUSH {R4-R12,lr}
+;		CMP R0,R1
+;		BHS	MAX0
+;		MOV	R0,R1
+;MAX0 	POP	{R4-R12,pc}
+
+;
+; your gets subroutine goes here
+; buffer R6
+
+gets 	PUSH {R4-R12,lr}	
+gets1	CMP	R4,R5
+		BLE	STOP
+		BL	get
+		BL	put
+		ADD R5,R5,#1
+		STRB R0,[R6]
+		ADD	R6,R6,#4
+		B	gets1
+		POP{R4-R12,pc}
+
+; your matmul subroutine goes here
+;
+;MATMUL	PUSH {R4-R12,lr}
+	MATMUL
+MATMUL0 PUSH    {R4-R12, LR}   		     
+   		 LDR   	 R4, =0   				 ; i = 0
+MATMUL1  LDR   	 R12, [R3]   			 ; load number of rows in matrix a
+   		 CMP   	 R4, R12   				 ; compare i to number of rows in matrix a
+   		 BGE   	 MATMUL6    			 ; if rows in a = 0, branch to end 
+   	 
+   		 LDR   	 R5, =0   				 ; else j = 0
+MATMUL2  LDR   	 R12, [R3, #8]   		 ; load number of columns matrix b
+   		 CMP   	 R5, R12   				 ; compare j to number of columns in matrix b 
+   		 BGE   	 MATMUL5    			 ; if columns in b = 0, end loop
+   		 LDR   	 R11, =0   				 ; else r (R11) = 0
+   	 
+   		 LDR   	 R6, =0   				 ; R6 = k = 0
+MATMUL3  LDR   	 R12, [R3, #4]   		 ; load number of columns in first matrix
+   		 CMP   	 R6, R12   				 ; compare k to number of columns matrix a
+   		 BGE   	 MATMUL4    			 ; if colmns in b = 0, end loop
+   	 
+   		 LDR   	 R12, [R3, #4]   		 ; load number of columns matrix a 
+   		 MUL   	 R7, R4, R12   			 ; R7 = i*rowSize 
+   		 ADD   	 R7, R7, R6   			 ; R7 = i*rowSize + columnNumber k
+   		 LDR   	 R8, [R0, R7, LSL #2]    ; R8 = A[i, k]
+   	 
+   		 LDR   	 R12, [R3, #8]   		 ; load number of columns in matrix b 
+   		 MUL   	 R7, R6, R12   			 ; R7 = k*rowSize
+   		 ADD   	 R7, R7, R5   			 ; R7 = k*rowSize + columnNumber j 
+   		 LDR   	 R9, [R1, R7, LSL #2]    ; R9 = B[k, j]
+   	 
+   		 MUL   	 R10, R8, R9   			 ; R10 = A[i, k] * B[k, j]
+   		 ADD   	 R11, R11, R10   		 ; r (R11) = r + A[i, k] * B[k, j]
+   		 ADD   	 R6, R6, #1   			 ; k++
+   		 B   	 MATMUL3    			 ; repeat k third for loop
+   	 
+MATMUL4  LDR   	 R12, [R3, #8]   		 ; load number of colums in matrix b
+   		 MUL   	 R7, R4, R12   			 ; R7 = i*rowSize 
+   		 ADD   	 R7, R7, R5   			 ; R7 = i*rowSize + columnNumber j 
+   		 STR   	 R11, [R2, R7, LSL #2]   ; R8 = R[i, j] = r (R11)
+   		 ADD   	 R5, R5, #1   			 ; j++
+   		 B   	 MATMUL2    			 ; repeat j second for loop
+   	 
+MATMUL5  ADD   	 R4, R4, #1   		     ; i++
+   		 B   	 MATMUL1    			 ; repeat i first for loop
+
+MATMUL6  POP   	 {R4-R12, PC} 
+
+;
+; inithw subroutines
+; performs hardware initialisation, including console
+; parameters:
+;	none
+; return value:
+;	none
+;
+inithw
+	LDR	R0, =PINSEL0		; enable UART0 TxD and RxD signals
+	MOV	R1, #0x50
+	STRB	R1, [R0]
+	LDR	R0, =U0LCR		; 7 data bits + parity
+	LDR	R1, =0x02
+	STRB	R1, [R0]
+	BX	LR
+
+;
+; get subroutine
+; returns the ASCII code of the next character read on the console
+; parameters:
+;	none
+; return value:
+;	R0 - ASCII code of the character read on teh console (byte)
+;
+get	LDR	R1, =U0LSR		; R1 -> U0LSR (Line Status Register)
+get0	LDR	R0, [R1]		; wait until
+	ANDS	R0, #0x01		; receiver data
+	BEQ	get0			; ready
+	LDR	R1, =U0RBR		; R1 -> U0RBR (Receiver Buffer Register)
+	LDRB	R0, [R1]		; get received data
+	BX	LR			; return
+
+;
+; put subroutine
+; writes a character to the console
+; parameters:
+;	R0 - ASCII code of the character to write
+; return value:
+;	none
+;
+put	LDR	R1, =U0LSR		; R1 -> U0LSR (Line Status Register)
+	LDRB	R1, [R1]		; wait until transmit
+	ANDS	R1, R1, #0x20		; holding register
+	BEQ	put			; empty
+	LDR	R1, =U0THR		; R1 -> U0THR
+	STRB	R0, [R1]		; output charcter
+put0	LDR	R1, =U0LSR		; R1 -> U0LSR
+	LDRB	R1, [R1]		; wait until
+	ANDS	R1, R1, #0x40		; transmitter
+	BEQ	put0			; empty (data flushed)
+	BX	LR			; return
+
+;
+; puts subroutine
+; writes the sequence of characters in a NULL-terminated string to the console
+; parameters:
+;	R0 - address of NULL-terminated ASCII string
+; return value:
+;	R0 - ASCII code of the character read on teh console (byte)
+;
+puts	STMFD	SP!, {R4, LR} 		; push R4 and LR
+	MOV	R4, R0			; copy R0
+puts0	LDRB	R0, [R4], #1		; get character + increment R4
+	CMP	R0, #0			; 0?
+	BEQ	puts1			; return
+	BL	put			; put character
+	B	puts0			; next character
+puts1	LDMFD	SP!, {R4, PC} 		; pop R4 and PC
+
+
+;
+; test arrays
+;
+
+ARR_A	DCD	 1,  2,  3,  4
+	DCD	 5,  6,  7,  8
+	DCD	 9, 10, 11, 12
+	DCD	13, 14, 15, 16
+
+ARR_B	DCD	 1,  2,  3,  4
+	DCD	 5,  6,  7,  8
+	DCD	 9, 10, 11, 12
+	DCD	13, 14, 15, 16
+
+	END
